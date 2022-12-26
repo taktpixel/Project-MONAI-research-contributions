@@ -141,7 +141,7 @@ def main_worker(gpu, args):
         model_dict = torch.load(os.path.join(pretrained_dir, args.pretrained_model_name))["state_dict"]
         del model_dict['out.conv.conv.weight']
         del model_dict['out.conv.conv.bias']
-        model.load_state_dict(model_dict)
+        model.load_state_dict(model_dict, strict=False)
         print("Use pretrained weights")
 
     if args.use_ssl_pretrained:
