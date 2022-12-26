@@ -146,7 +146,7 @@ def main_worker(gpu, args):
 
     if args.use_ssl_pretrained:
         try:
-            model_dict = torch.load("./pretrained_models/model_swinvit.pt")
+            model_dict = torch.load("../pretrained_models/model_swinvit.pt")
             state_dict = model_dict["state_dict"]
             # fix potential differences in state dict keys from pre-training to
             # fine-tuning
