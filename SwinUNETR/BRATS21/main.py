@@ -137,7 +137,10 @@ def main_worker(gpu, args):
 
     if args.resume_ckpt:
         model_dict = torch.load(pretrained_pth)["state_dict"]
-        model.load_state_dict(model_dict)
+        del model_dict['out.conv.conv.weight']
+        del model_dict['out.conv.conv.bias']
+        model.load_state_dict(model_dict, strict=False)
+        # model.load_state_dict(model_dict)
         print("Using pretrained weights")
 
     if args.squared_dice:
