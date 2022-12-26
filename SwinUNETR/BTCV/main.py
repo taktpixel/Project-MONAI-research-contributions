@@ -139,6 +139,8 @@ def main_worker(gpu, args):
 
     if args.resume_ckpt:
         model_dict = torch.load(os.path.join(pretrained_dir, args.pretrained_model_name))["state_dict"]
+        del model_dict['out.conv.conv.weight']
+        del model_dict['out.conv.conv.bias']
         model.load_state_dict(model_dict)
         print("Use pretrained weights")
 
