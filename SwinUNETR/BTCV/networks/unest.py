@@ -27,9 +27,9 @@ import torch.nn as nn
 from monai.networks.blocks import Convolution
 from monai.networks.blocks.dynunet_block import UnetOutBlock
 
-# from scripts.networks.swin_transformer_3d import SwinTransformer3D
-from scripts.networks.nest_transformer_3D import NestTransformer3D
-from scripts.networks.unest_block import UNesTBlock, UNesTConvBlock, UNestUpBlock
+# from networks.swin_transformer_3d import SwinTransformer3D
+from networks.nest_transformer_3D import NestTransformer3D
+from networks.unest_block import UNesTBlock, UNesTConvBlock, UNestUpBlock
 
 # from monai.networks.blocks.unetr_block import UnetstrBasicBlock, UnetrPrUpBlock, UnetResBlock
 
