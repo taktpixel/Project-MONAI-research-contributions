@@ -217,8 +217,8 @@ def main_worker(gpu, args):
 
     if args.distributed:
         torch.cuda.set_device(args.gpu)
-        if args.norm_name == "batch":
-            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        # if args.norm_name == "batch":
+        #     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model.cuda(args.gpu)
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], output_device=args.gpu)
     if args.optim_name == "adam":
