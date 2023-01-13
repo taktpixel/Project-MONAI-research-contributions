@@ -80,7 +80,7 @@ class UNesT(nn.Module):
         self.embed_dim = [128, 256, 512]
 
         self.nestViT = NestTransformer3D(
-            img_size=96,
+            img_size=img_size[0],
             in_chans=1,
             patch_size=4,
             num_levels=3,
