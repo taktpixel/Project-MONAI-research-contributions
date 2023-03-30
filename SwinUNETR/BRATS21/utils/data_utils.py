@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from monai import data, transforms
+from monai.data import load_decathlon_datalist
 
 
 class Sampler(torch.utils.data.Sampler):
@@ -94,21 +95,25 @@ def datafold_read(datalist, basedir, fold=0, key="training"):
 def get_loader(args):
     data_dir = args.data_dir
     datalist_json = os.path.join(data_dir, args.json_list)
-    train_files, validation_files = datafold_read(datalist=datalist_json, basedir=data_dir, fold=args.fold)
+    # train_files, validation_files = datafold_read(datalist=datalist_json, basedir=data_dir, fold=args.fold)
     train_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            transforms.AddChanneld(keys=["image", "label"]),
+            # transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            # transforms.CropForegroundd(
+            #     keys=["image", "label"], source_key="image", k_divisible=[args.roi_x, args.roi_y, args.roi_z]
+            # ),
             transforms.CropForegroundd(
-                keys=["image", "label"], source_key="image", k_divisible=[args.roi_x, args.roi_y, args.roi_z]
+                keys=["image", "label"], source_key="image"
             ),
             transforms.RandSpatialCropd(
                 keys=["image", "label"], roi_size=[args.roi_x, args.roi_y, args.roi_z], random_size=False
             ),
-            transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=0),
-            transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=1),
-            transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=2),
-            transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            # transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=0),
+            # transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=1),
+            # transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=2),
+            # transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=1.0),
             transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=1.0),
             transforms.ToTensord(keys=["image", "label"]),
@@ -117,8 +122,9 @@ def get_loader(args):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
-            transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            transforms.AddChanneld(keys=["image", "label"]),
+            # transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            # transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.ToTensord(keys=["image", "label"]),
         ]
     )
@@ -126,15 +132,17 @@ def get_loader(args):
     test_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
-            transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            transforms.AddChanneld(keys=["image", "label"]),
+            # transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            # transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.ToTensord(keys=["image", "label"]),
         ]
     )
 
     if args.test_mode:
 
-        val_ds = data.Dataset(data=validation_files, transform=test_transform)
+        val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=data_dir)
+        val_ds = data.Dataset(data=val_files, transform=test_transform)
         val_sampler = Sampler(val_ds, shuffle=False) if args.distributed else None
         test_loader = data.DataLoader(
             val_ds, batch_size=1, shuffle=False, num_workers=args.workers, sampler=val_sampler, pin_memory=True
@@ -142,7 +150,9 @@ def get_loader(args):
 
         loader = test_loader
     else:
-        train_ds = data.Dataset(data=train_files, transform=train_transform)
+        datalist = load_decathlon_datalist(datalist_json, True, "training", base_dir=data_dir)
+        # train_ds = data.Dataset(data=train_files, transform=train_transform)
+        train_ds = data.Dataset(data=datalist, transform=train_transform)
 
         train_sampler = Sampler(train_ds) if args.distributed else None
         train_loader = data.DataLoader(
@@ -153,7 +163,8 @@ def get_loader(args):
             sampler=train_sampler,
             pin_memory=True,
         )
-        val_ds = data.Dataset(data=validation_files, transform=val_transform)
+        val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=data_dir)
+        val_ds = data.Dataset(data=val_files, transform=val_transform)
         val_sampler = Sampler(val_ds, shuffle=False) if args.distributed else None
         val_loader = data.DataLoader(
             val_ds, batch_size=1, shuffle=False, num_workers=args.workers, sampler=val_sampler, pin_memory=True

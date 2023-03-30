@@ -13,6 +13,7 @@ import os
 import pdb
 import shutil
 import time
+import math
 
 import numpy as np
 import torch
@@ -24,6 +25,28 @@ from utils.utils import AverageMeter, distributed_all_gather
 
 from monai.data import decollate_batch
 
+def unpack(target, mask, shift):
+    # np_target = target.numpy()
+    # np_target1 = np.right_shift(np_target, np.arange(0, 32, 8, dtype=np.uint32))
+    # np_target2 = np.bitwise_and(np_target1, 0xFF).astype(np.uint8)
+    # target_bits = np.unpackbits(np_target2, axis=args.out_channels).reshape(-1, args.out_channels, target.shape[2], target.shape[3], target.shape[4])
+    # target = torch.from_numpy(target_bits).float()
+    target = torch.transpose(target, 1, -1)
+    x_bits = (target.to(torch.int) & mask) >> shift
+    x_bits = torch.transpose(x_bits, 1, -1)
+    x_bits = x_bits.float()
+
+    # for s in [0, 8, 16, 32]:
+    #     target1 = torch.bitwise_right_shift(target.to(torch.int), torch.tensor([s]*math.prod(target.shape)).reshape(target.shape))
+    return x_bits
+
+def pack(x_bit):
+    x_bit = x_bit.to(torch.int32)
+    x =x_bit[:, 0, :, :, :]
+    for i in range(1, x_bit.shape[1]):
+        x = torch.bitwise_or(x, x_bit[:, i, :, :, :])
+    x = x.reshape((x.shape[0], 1, *x.shape[1:]))
+    return x
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     model.train()
@@ -35,6 +58,11 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         else:
             data, target = batch_data["image"], batch_data["label"]
         data, target = data.cuda(args.rank), target.cuda(args.rank)
+        mask = torch.tensor(list([2**i for i in range(args.out_channels)]), dtype=torch.int)
+        mask = mask.cuda(args.rank)
+        shift = torch.arange(0, args.out_channels)
+        shift = shift.cuda(args.rank)
+        target = unpack(target, mask, shift)
         for param in model.parameters():
             param.grad = None
         with autocast(enabled=args.amp):
@@ -75,11 +103,18 @@ def val_epoch(model, loader, epoch, acc_func, args, model_inferer=None, post_sig
         for idx, batch_data in enumerate(loader):
             data, target = batch_data["image"], batch_data["label"]
             data, target = data.cuda(args.rank), target.cuda(args.rank)
+            mask = torch.tensor(list([2**i for i in range(args.out_channels)]), dtype=torch.int)
+            mask = mask.cuda(args.rank)
+            shift = torch.arange(0, args.out_channels)
+            shift = shift.cuda(args.rank)
+            target = unpack(target, mask, shift)
             with autocast(enabled=args.amp):
                 logits = model_inferer(data)
             val_labels_list = decollate_batch(target)
             val_outputs_list = decollate_batch(logits)
             val_output_convert = [post_pred(post_sigmoid(val_pred_tensor)) for val_pred_tensor in val_outputs_list]
+            # val_labels_list = [d.cpu() for d in val_labels_list]
+            # val_output_convert = [d.cpu() for d in val_output_convert]
             acc_func.reset()
             acc_func(y_pred=val_output_convert, y=val_labels_list)
             acc, not_nans = acc_func.aggregate()
