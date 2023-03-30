@@ -25,16 +25,26 @@ from utils.utils import AverageMeter, distributed_all_gather
 
 from monai.data import decollate_batch
 
+def unpack_np(target, out_channels):
+    np_target = target.numpy().astype(np.uint32)
+    output = []
+    for i in np.arange(0, 32, 8, dtype=np.uint32):
+        np_target1 = np.right_shift(np_target, i)
+        np_target2 = np.bitwise_and(np_target1, 0xFF).astype(np.uint8)
+        x_bits = np.unpackbits(np_target2, axis=1).reshape(-1, 8, target.shape[2], target.shape[3], target.shape[4])
+        output.append(x_bits)
+
+    output = np.concatenate(output, axis=1) 
+    output = output[:, :out_channels, :, :, :]
+    target_bits = torch.from_numpy(output).float()
+    return target_bits
+
 def unpack(target, mask, shift):
-    # np_target = target.numpy()
-    # np_target1 = np.right_shift(np_target, np.arange(0, 32, 8, dtype=np.uint32))
-    # np_target2 = np.bitwise_and(np_target1, 0xFF).astype(np.uint8)
-    # target_bits = np.unpackbits(np_target2, axis=args.out_channels).reshape(-1, args.out_channels, target.shape[2], target.shape[3], target.shape[4])
     # target = torch.from_numpy(target_bits).float()
     target = torch.transpose(target, 1, -1)
     x_bits = (target.to(torch.int) & mask) >> shift
     x_bits = torch.transpose(x_bits, 1, -1)
-    x_bits = x_bits.float()
+    # x_bits = x_bits.float()
 
     # for s in [0, 8, 16, 32]:
     #     target1 = torch.bitwise_right_shift(target.to(torch.int), torch.tensor([s]*math.prod(target.shape)).reshape(target.shape))
@@ -102,17 +112,25 @@ def val_epoch(model, loader, epoch, acc_func, args, model_inferer=None, post_sig
     with torch.no_grad():
         for idx, batch_data in enumerate(loader):
             data, target = batch_data["image"], batch_data["label"]
-            data, target = data.cuda(args.rank), target.cuda(args.rank)
-            mask = torch.tensor(list([2**i for i in range(args.out_channels)]), dtype=torch.int)
-            mask = mask.cuda(args.rank)
-            shift = torch.arange(0, args.out_channels)
-            shift = shift.cuda(args.rank)
-            target = unpack(target, mask, shift)
+            data = data.cuda(args.rank)
             with autocast(enabled=args.amp):
                 logits = model_inferer(data)
+
+            logits = logits.cpu()
+            # mask = torch.tensor(list([2**i for i in range(args.out_channels)]), dtype=torch.int)
+            # mask = mask.cuda(args.rank)
+            # shift = torch.arange(0, args.out_channels)
+            # shift = shift.cuda(args.rank)
+            # target = target.cuda(args.rank)
+            # target = unpack(target, mask, shift)
+            target = unpack_np(target, args.out_channels)
+            target = torch.Tensor(target)
             val_labels_list = decollate_batch(target)
             val_outputs_list = decollate_batch(logits)
             val_output_convert = [post_pred(post_sigmoid(val_pred_tensor)) for val_pred_tensor in val_outputs_list]
+            val_outputs_list = None
+            logits = None
+            target = None
             # val_labels_list = [d.cpu() for d in val_labels_list]
             # val_output_convert = [d.cpu() for d in val_output_convert]
             acc_func.reset()
